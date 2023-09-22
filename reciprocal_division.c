@@ -22,12 +22,12 @@ int log2_32 (uint32_t value)
     return tab32[(uint32_t)(value*0x07C4ACDD) >> 27];
 }
 
-uint8_t leading_one_detect(int num)
+uint8_t _zerofind(int num)
 {
     uint8_t pos = 0;
     for (int j = 31; j >= 0; --j)
     {
-        if (((num >> j) && 0x01) == 0x01)
+        if (((num >> j) && 0x01) == 0x00)
             pos += 1;
         else
             break;
@@ -62,8 +62,6 @@ uint8_t reciprocal_div(uint8_t X, int divisor, int divisor_round)
     printf("RECIPROCAL_DIVISION: \n");
     printf("    dividend: %d, divisor: %d, divisor_round: %d\n", dividend, divisor, divisor_round);
     printf("    MULT: %d, RSHAMT: %d\n", MULT, RSHAMT);
-    printf("    LOG2: %d\n", log2_32(divisor));
-    printf("    LOD: %d\n\n", leading_one_detect(divisor));
 #endif
     return result;
 }
@@ -71,17 +69,26 @@ uint8_t reciprocal_div(uint8_t X, int divisor, int divisor_round)
 uint8_t my_reciprocal_div(uint8_t X, int divisor, int divisor_round)
 {
     uint8_t result = 0;
-    uint8_t RSHAMT = 31 - leading_one_detect(divisor);
-    uint32_t MULT = (((long long)1 << RSHAMT)) / divisor;
+    int N_bits = 32;
     uint32_t dividend = X * SOFTMAX_OUV_INV_SCALE + divisor_round;
-    result = ((dividend * (long long)MULT)) >> RSHAMT;
+
+    // k = x + ceil(log2(D)) 
+    /** NOTE: ceil(log2(D)) = N - LDZ(D-1),  floor(log2(D)) = N - 1 - LDZ(D)*/ 
+    uint8_t RSHAMT = N_bits + (N_bits - _zerofind(divisor-1));
+
+    // a = math.ceil((2**k)/D) - (2**x)
+    uint32_t a = (((long long)(1 << RSHAMT) + (divisor_round)) / divisor) - ((long long)1 << N_bits);
+
+    // b = math.floor((N * a) / (2**x))
+    uint32_t b = ((long long)dividend * a) >> N_bits;
+
+    // result = math.floor((math.floor((N-b)/2) + b) / (2**(k-x-1)))
+    result = (((dividend-b)>>1) + b) >> (RSHAMT-N_bits-1);
 
 #ifdef DEBUG
     printf("RECIPROCAL_DIVISION: \n");
     printf("    dividend: %d, divisor: %d, divisor_round: %d\n", dividend, divisor, divisor_round);
-    printf("    MULT: %d, RSHAMT: %d\n", MULT, RSHAMT);
-    printf("    LOG2: %d\n", log2_32(divisor));
-    printf("    LOD: %d\n\n", leading_one_detect(divisor));
+    // printf("    MULT: %d, RSHAMT: %d\n", MULT, RSHAMT);
 #endif
     return result;
 }
